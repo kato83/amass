@@ -57,5 +57,5 @@ changelog:
 
 release:
   github:
-    owner: owasp-amass
+    owner: kato83
     name: amass
