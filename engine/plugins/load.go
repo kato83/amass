@@ -37,6 +37,7 @@ var pluginNewFuncs = []func() et.Plugin{
 	api.NewShodan,
 	//api.NewURLScan,
 	api.NewVirusTotal,
+	api.NewWhoisXMLAPI,
 	api.NewZetalytics,
 	archive.NewWayback,
 	aviato.NewAviato,
