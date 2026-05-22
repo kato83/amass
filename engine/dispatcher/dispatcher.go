@@ -318,7 +318,7 @@ func limitsByAssetType(atype oam.AssetType) *limits {
 			MaxQueued:    200,
 			HighWater:    175,
 			LowWater:     100,
-			PerSessBurst: 10,
+			PerSessBurst: 50,
 		}
 	case oam.Service:
 		fallthrough

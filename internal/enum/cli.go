@@ -295,9 +295,9 @@ func CLIWorkflow(cmdName string, clArgs []string) {
 						_ = term.Reset(timeoutDur)
 					}
 
-					if stats.WorkItemsCompleted == stats.WorkItemsTotal {
+					if stats.WorkItemsCompleted == stats.WorkItemsTotal && stats.WorkItemsTotal > 0 {
 						finished++
-						if finished == 5 {
+						if finished == 15 {
 							close(done)
 							return
 						}
