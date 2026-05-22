@@ -101,11 +101,16 @@ func (ht *hackerTarget) query(e *et.Event, name string) []*dbt.Entity {
 	_ = ht.rlimit.Wait(e.Session.Ctx())
 	e.Session.NetSem().Acquire()
 
+	apiURL := ht.url + name
+	if key, err := support.GetAPI(ht.name, e); err == nil && key != "" {
+		apiURL += "&apikey=" + key
+	}
+
 	ctx, cancel := context.WithTimeout(e.Session.Ctx(), 30*time.Second)
 	defer cancel()
 
 	resp, err := amasshttp.RequestWebPage(ctx,
-		e.Session.Clients().General, &amasshttp.Request{URL: ht.url + name})
+		e.Session.Clients().General, &amasshttp.Request{URL: apiURL})
 	e.Session.NetSem().Release()
 	if err != nil {
 		return nil
