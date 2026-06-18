@@ -315,10 +315,10 @@ func limitsByAssetType(atype oam.AssetType) *limits {
 		fallthrough
 	case oam.IPAddress:
 		return &limits{
-			MaxQueued:    200,
-			HighWater:    175,
-			LowWater:     100,
-			PerSessBurst: 10,
+			MaxQueued:    50,
+			HighWater:    40,
+			LowWater:     20,
+			PerSessBurst: 5,
 		}
 	case oam.Service:
 		fallthrough
