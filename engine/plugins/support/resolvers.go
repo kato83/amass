@@ -35,66 +35,38 @@ type baseline struct {
 
 // baselineResolvers is a list of trusted public DNS resolvers.
 var baselineResolvers = []baseline{
-	{"8.8.8.8", 5}, // Google Primary
-	//	{"8.8.4.4", 5},         // Google Secondary
-	{"95.85.95.85", 2},     // Gcore DNS Primary
-	{"2.56.220.2", 2},      // Gcore DNS Secondary
-	{"76.76.2.0", 2},       // ControlD Primary
-	{"76.76.10.0", 2},      // ControlD Secondary
-	{"9.9.9.9", 2},         // Quad9 Primary
-	{"149.112.112.112", 2}, // Quad9 Secondary
-	{"208.67.222.222", 2},  // Cisco OpenDNS Home Primary
-	{"208.67.220.220", 2},  // Cisco OpenDNS Home Secondary
-	{"1.1.1.1", 3},         // Cloudflare Primary
-	{"1.0.0.1", 3},         // Cloudflare Secondary
-	{"185.228.168.9", 1},   // CleanBrowsing Primary
-	{"185.228.169.9", 1},   // CleanBrowsing Secondary
-	{"76.76.19.19", 1},     // Alternate DNS Primary
-	{"76.223.122.150", 1},  // Alternate DNS Secondary
-	{"94.140.14.14", 1},    // AdGuard DNS Primary
-	{"94.140.15.15", 1},    // AdGuard DNS Secondary
-	{"176.103.130.130", 1}, // AdGuard
-	{"176.103.130.131", 1}, // AdGuard
-	{"8.26.56.26", 1},      // Comodo Secure DNS Primary
-	{"8.20.247.20", 1},     // Comodo Secure DNS Secondary
-	{"205.171.3.65", 1},    // CenturyLink Level3 Primary
-	{"205.171.2.65", 1},    // CenturyLink Level3 Secondary
-	{"64.6.64.6", 1},       // Verisign DNS Primary
-	{"64.6.65.6", 1},       // Verisign DNS Secondary
-	{"209.244.0.3", 1},     // CenturyLink Level3
-	{"209.244.0.4", 1},     // CenturyLink Level3
-	{"149.112.121.10", 1},  // CIRA Canadian Shield Primary
-	{"149.112.122.10", 1},  // CIRA Canadian Shield Secondary
-	{"138.197.140.189", 1}, // OpenNIC Primary
-	{"162.243.19.47", 1},   // OpenNIC Secondary
-	{"216.87.84.211", 1},   // OpenNIC
-	{"23.90.4.6", 1},       // OpenNIC
-	{"216.146.35.35", 1},   // Oracle Dyn Primary
-	{"216.146.36.36", 1},   // Oracle Dyn Secondary
-	{"91.239.100.100", 1},  // UncensoredDNS Primary
-	{"89.233.43.71", 1},    // UncensoredDNS Secondary
-	{"77.88.8.8", 1},       // Yandex.DNS Primary
-	{"77.88.8.1", 1},       // Yandex.DNS Secondary
-	{"74.82.42.42", 1},     // Hurricane Electric Primary
-	{"94.130.180.225", 1},  // DNS for Family Primary
-	{"78.47.64.161", 1},    // DNS for Family Secondary
-	{"80.80.80.80", 1},     // Freenom World Primary
-	{"80.80.81.81", 1},     // Freenom World Secondary
-	{"84.200.69.80", 1},    // DNS.WATCH Primary
-	{"84.200.70.40", 1},    // DNS.WATCH Secondary
-	{"156.154.70.5", 1},    // Neustar Primary
-	{"156.157.71.5", 1},    // Neustar Secondary
-	{"81.218.119.11", 1},   // GreenTeamDNS Primary
-	{"209.88.198.133", 1},  // GreenTeamDNS Secondary
-	{"37.235.1.177", 1},    // FreeDNS
-	{"38.132.106.139", 1},  // CyberGhost
+	{"8.8.8.8", 5},        // Google
+	{"1.1.1.1", 5},        // Cloudflare
+	{"9.9.9.9", 5},        // Quad9
+	{"208.67.222.222", 5}, // Cisco OpenDNS
+	{"84.200.69.80", 5},   // DNS.WATCH
+	{"64.6.64.6", 5},      // Neustar DNS
+	{"8.26.56.26", 5},     // Comodo Secure DNS
+	{"205.171.3.65", 5},   // Level3
+	{"134.195.4.2", 5},    // OpenNIC
+	{"185.228.168.9", 5},  // CleanBrowsing
+	{"76.76.19.19", 5},    // Alternate DNS
+	{"37.235.1.177", 5},   // FreeDNS
+	{"77.88.8.1", 5},      // Yandex.DNS
+	{"94.140.14.140", 5},  // AdGuard
+	{"38.132.106.139", 5}, // CyberGhost
+	{"74.82.42.42", 5},    // Hurricane Electric
+	{"76.76.2.0", 5},      // ControlD
 }
 
 var trusted *pool.Pool
 var detector *wildcards.Detector
 
 func PerformQuery(ctx context.Context, name string, qtype uint16) ([]dns.RR, error) {
-	for i := 1; i <= 10; i++ {
+	const (
+		maxAttempts    = 50
+		initialBackoff = 250 * time.Millisecond
+		maxBackoff     = 4 * time.Second
+		maxServfails   = 3
+	)
+
+	var servfails int
+	for i := 1; i <= maxAttempts; i++ {
 		msg := utils.QueryMsg(name, qtype)
 		if qtype == dns.TypePTR {
 			msg = utils.ReverseMsg(name)
@@ -106,11 +78,34 @@ func PerformQuery(ctx context.Context, name string, qtype uint16) ([]dns.RR, err
 			}
 			if len(resp.Answer) > 0 {
 				if rr := utils.AnswersByType(resp, qtype); len(rr) > 0 {
+					var resolved []string
+					for _, r := range rr {
+						resolved = append(resolved, r.String())
+					}
 					return rr, nil
 				}
+			} else {
 			}
-		} else if err == ErrNameDoesNotExist || err == ErrNoRecordOfThisType {
+		} else if err == ErrNameDoesNotExist {
 			return nil, err
+		} else if err == ErrNoRecordOfThisType {
+			return nil, err
+		} else if resp != nil && resp.Rcode == dns.RcodeServerFailure {
+			servfails++
+			if servfails >= maxServfails {
+				return nil, ErrFailedMaxDNSAttempts
+			}
+		}
+
+		// Exponential backoff capped at maxBackoff
+		backoff := initialBackoff * (1 << min(i-1, 14))
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
 		}
 	}
 	return nil, ErrFailedMaxDNSAttempts
@@ -140,7 +135,7 @@ func dnsQuery(ctx context.Context, msg *dns.Msg, r *pool.Pool) (*dns.Msg, error)
 }
 
 func trustedResolvers() *pool.Pool {
-	timeout := 250 * time.Millisecond
+	timeout := 3 * time.Second
 	cpus := runtime.NumCPU()
 	// wildcard detector
 	serv := servers.NewNameserver("8.8.4.4")
